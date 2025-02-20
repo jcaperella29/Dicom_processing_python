@@ -1,60 +1,71 @@
-# Dicom_processing_python
+# DICOM Tissue Classification
 
-
-
-This repository contains a Python script for loading, processing, and displaying **DICOM (Digital Imaging and Communications in Medicine) files**. The script is designed for use in **radiology and medical physics applications**, allowing users to extract metadata, handle compressed images, and visualize DICOM images.
+This project processes DICOM medical images, extracts metadata, and applies a pre-trained deep learning model to classify tissue types. It also displays the DICOM image for visual inspection.
 
 ## Features
-- **Load DICOM Files**: Reads `.dcm` files using `pydicom`.
-- **Metadata Extraction**: Displays patient details, modality, study date, and image dimensions.
-- **Handles Multi-Frame (3D) Images**: Selects the middle slice for visualization.
-- **Decompresses Compressed Images**: Supports JPEG-based DICOM compression (requires `gdcm` or `pylibjpeg`).
-- **Image Visualization**: Uses `matplotlib` to display grayscale medical images.
+- **DICOM Loading & Processing**: Reads and decompresses DICOM files if necessary.
+- **Image Display**: Displays the medical image using Matplotlib.
+- **Tissue Classification**: Uses a pre-trained ResNet18 model to classify tissue types from medical images.
 
 ## Installation
-To run the script, install the required dependencies:
-
+To install the necessary dependencies, run:
 ```bash
-pip install pydicom matplotlib numpy gdcm pylibjpeg pylibjpeg-libjpeg pillow
-```
-
-If `gdcm` fails to install via `pip`, try:
-```bash
-conda install -c conda-forge gdcm
+pip install pydicom numpy matplotlib torch torchvision pillow
 ```
 
 ## Usage
-1. **Clone the Repository**
-```bash
-git clone https://github.com/yourusername/dicom-processing.git
-cd dicom-processing
-```
-
-2. **Run the Script**
+Run the script with:
 ```bash
 python Dicome_processing.py
 ```
 
-3. **Select a DICOM File** (or modify `filepath` in the script).
+## Script Overview
+
+### Load and Process DICOM Files
+The script reads a DICOM file, extracts metadata, and ensures compatibility with the deep learning model.
+
+### Display Image
+The DICOM image is displayed using Matplotlib to allow for visual inspection.
+
+### Classify Tissue Type
+A pre-trained **ResNet18** model is used to classify the tissue type from the DICOM image. The classification result is printed in the console.
+
+## Code Structure
+```python
+import pydicom
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+import torchvision.transforms as transforms
+from torchvision import models
+from PIL import Image
+```
+
+- **`load_dicom(filepath)`**: Reads and preprocesses the DICOM file.
+- **`classify_tissue(image)`**: Uses deep learning to classify the tissue type.
+- **`display_dicom(image, metadata)`**: Displays the medical image.
+- **`main()`**: The main function that orchestrates loading, displaying, and classification.
 
 ## Example Output
 ```
 DICOM Metadata:
-Patient Name: Sample Patient
-Modality: CT
-Study Date: 20230201
+Patient Name: Rubo DEMO^
+Modality: XA
+Study Date: 19941013
 Image Dimensions: (512, 512)
+Predicted Tissue Type: 419
 ```
-The selected **DICOM slice** will then be displayed in a window.
 
-## Troubleshooting
-- If you get a **decompression error**, ensure `gdcm` or `pylibjpeg` is installed.
-- If your image is **multi-frame (3D)**, the script will automatically pick the middle slice.
-- If `pydicom` raises an **invalid shape error**, ensure you are selecting a valid 2D slice.
-
-## Contributing
-Pull requests are welcome! If you have improvements or additional features, feel free to contribute.
+## Future Improvements
+- Implement support for more advanced models.
+- Expand dataset for better classification.
+- Add more detailed visualization and segmentation.
 
 ## License
-MIT License. Free to use and modify.
+This project is open-source and available under the MIT License.
+
+---
+
+### Author
+Developed by [Your Name].
 
