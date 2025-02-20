@@ -4,13 +4,17 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as transforms
 from torchvision import models
+from ultralytics import YOLO  # YOLOv8 for lesion detection
 from PIL import Image
 
-# Load pre-trained model
-model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-model.eval()
+# Load pre-trained ResNet for tissue classification
+resnet_model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+resnet_model.eval()
 
-# Define transformation pipeline
+# Load YOLOv8 model for lesion detection
+yolo_model = YOLO("yolov8n.pt")  # Replace with medical YOLO model if available
+
+# Define image transformation pipeline
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -20,7 +24,7 @@ transform = transforms.Compose([
 def load_dicom(filepath):
     """Load a DICOM file and extract image & metadata"""
     ds = pydicom.dcmread(filepath, force=True)
-    
+
     # Handle compressed images if needed
     transfer_syntax = ds.file_meta.TransferSyntaxUID if 'TransferSyntaxUID' in ds.file_meta else None
     if transfer_syntax and transfer_syntax.is_compressed:
@@ -46,13 +50,29 @@ def classify_tissue(image):
     image = transform(image).unsqueeze(0)
 
     with torch.no_grad():
-        outputs = model(image)
+        outputs = resnet_model(image)
         _, predicted = outputs.max(1)
 
     return predicted.item()
 
-def display_dicom(image, metadata, prediction):
-    """Display DICOM image with metadata and classification result"""
+def detect_lesions(image):
+    """Run YOLO lesion detection and return bounding boxes"""
+    image_rgb = np.stack([image] * 3, axis=-1) if len(image.shape) == 2 else image  # Convert grayscale to RGB
+
+    results = yolo_model(image_rgb)  # Run YOLO detection
+
+    boxes = []
+    for result in results:
+        for box in result.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])  # Get bounding box coordinates
+            confidence = float(box.conf[0])  # Get confidence score
+            class_id = int(box.cls[0])  # Get class ID
+            boxes.append((x1, y1, x2, y2, confidence, class_id))
+
+    return boxes
+
+def display_dicom(image, metadata, prediction, boxes=None):
+    """Display DICOM image with metadata, classification result, and lesion bounding boxes"""
     if image is None:
         print("No image to display.")
         return
@@ -76,6 +96,12 @@ def display_dicom(image, metadata, prediction):
     # Classification result
     ax.text(10, image.shape[0] - 20, f"Prediction: {prediction}", fontsize=14, color='yellow', bbox=text_props)
 
+    # Draw lesion bounding boxes
+    if boxes:
+        for (x1, y1, x2, y2, conf, cls) in boxes:
+            ax.add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, edgecolor='red', facecolor='none'))
+            ax.text(x1, y1 - 5, f"Lesion {cls}: {conf:.2f}", color='red', fontsize=12, bbox=text_props)
+
     plt.show()
 
 def main():
@@ -93,11 +119,14 @@ def main():
     print(f"Study Date: {ds.StudyDate}")
     print(f"Image Dimensions: {image.shape}")
 
-    # Classify tissue and display annotated image
+    # Classify tissue and detect lesions
     tissue_type = classify_tissue(image)
-    print(f"Predicted Tissue Type: {tissue_type}")
+    boxes = detect_lesions(image)
 
-    display_dicom(image, ds, tissue_type)
+    print(f"Predicted Tissue Type: {tissue_type}")
+    print(f"Detected Lesions: {len(boxes)}")
+
+    display_dicom(image, ds, tissue_type, boxes)
 
 if __name__ == "__main__":
     main()
