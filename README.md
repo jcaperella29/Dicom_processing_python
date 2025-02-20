@@ -1,71 +1,99 @@
-# DICOM Tissue Classification
+📌 Overview
+This project detects and classifies lesions in DICOM medical images using DeepLesion (Faster R-CNN) for detection and ResNet50 for classification.
 
-This project processes DICOM medical images, extracts metadata, and applies a pre-trained deep learning model to classify tissue types. It also displays the DICOM image for visual inspection.
+⚡ Features
+✅ Lesion Detection – Finds lesion locations using DeepLesion (Faster R-CNN).
+✅ Lesion Classification – Identifies lesion type using ResNet50.
+✅ False Positive Filtering – Removes misclassified structures (e.g., blood vessels).
+✅ Bounding Box Overlays – Draws lesion location & label on the image.
 
-## Features
-- **DICOM Loading & Processing**: Reads and decompresses DICOM files if necessary.
-- **Image Display**: Displays the medical image using Matplotlib.
-- **Tissue Classification**: Uses a pre-trained ResNet18 model to classify tissue types from medical images.
+🛠️ Installation
+1️⃣ Install Required Dependencies
+bash
+Copy
+Edit
+pip install torch torchvision pydicom numpy matplotlib opencv-python
+2️⃣ Clone the Repository
+bash
+Copy
+Edit
+git clone https://github.com/YOUR_GITHUB_USERNAME/DICOM-Lesion-Detection.git
+cd DICOM-Lesion-Detection
+3️⃣ Clone DeepLesion (Required for Detection)
+bash
+Copy
+Edit
+git clone https://github.com/rsummers11/CADLab.git
+cd CADLab/deep-lesion
+This contains the pretrained DeepLesion model for detecting lesions.
 
-## Installation
-To install the necessary dependencies, run:
-```bash
-pip install pydicom numpy matplotlib torch torchvision pillow
-```
+4️⃣ Run the Script
+Modify the DICOM file path in Dicome_processing.py:
 
-## Usage
-Run the script with:
-```bash
+python
+Copy
+Edit
+filepath = r"C:\Users\ccape\Downloads\Radiology_script\sample.dcm"
+Then, run:
+
+bash
+Copy
+Edit
 python Dicome_processing.py
-```
+📂 Project Structure
+graphql
+Copy
+Edit
+DICOM-Lesion-Detection/
+│── Dicome_processing.py  # Main script for detection & classification
+│── sample.dcm            # Example DICOM file (optional)
+│── README.md             # Project documentation
+│── CADLab/               # DeepLesion (cloned repo)
+│   ├── deep-lesion/      # Pretrained model & utilities
+📊 How It Works
+1️⃣ Load & Preprocess DICOM
+Reads DICOM images and extracts metadata.
+Converts grayscale images to RGB (for compatibility).
+2️⃣ Detect Lesions
+DeepLesion (Faster R-CNN) locates potential lesions.
+Filters false positives like thickened blood vessels.
+3️⃣ Classify Lesion Type
+ResNet50 model classifies detected lesions as:
+Tumor
+Cyst
+Hemorrhage
+Inflammation
+4️⃣ Display Results
+Bounding boxes highlight detected lesions on the DICOM image.
+Labels & confidence scores annotate each lesion type.
+📌 Example Output
+Detected Lesions:
+✅ Tumor (Score: 0.92) – Bounding Box: (120, 80, 200, 160)
+✅ Cyst (Score: 0.85) – Bounding Box: (300, 240, 380, 320)
 
-## Script Overview
+📷 Annotated Image Output (Lesion Bounding Boxes & Labels)
 
-### Load and Process DICOM Files
-The script reads a DICOM file, extracts metadata, and ensures compatibility with the deep learning model.
+🚀 Next Steps
+🔍 Explainability (Grad-CAM)
+✅ Generate heatmaps showing which lesion areas influenced classification.
 
-### Display Image
-The DICOM image is displayed using Matplotlib to allow for visual inspection.
+🤖 Multimodal AI (Lesion Detection + Clinical Reports)
+✅ Use NLP models to summarize findings automatically.
 
-### Classify Tissue Type
-A pre-trained **ResNet18** model is used to classify the tissue type from the DICOM image. The classification result is printed in the console.
+📄 DICOM Export with Annotations
+✅ Save annotated images back into DICOM format for PACS/Radiology.
 
-## Code Structure
-```python
-import pydicom
-import numpy as np
-import matplotlib.pyplot as plt
-import torch
-import torchvision.transforms as transforms
-from torchvision import models
-from PIL import Image
-```
+📢 Contributing
+Want to improve this project? Contributions are welcome! 🚀
 
-- **`load_dicom(filepath)`**: Reads and preprocesses the DICOM file.
-- **`classify_tissue(image)`**: Uses deep learning to classify the tissue type.
-- **`display_dicom(image, metadata)`**: Displays the medical image.
-- **`main()`**: The main function that orchestrates loading, displaying, and classification.
+Fork the repo
+Create a feature branch
+Commit your changes
+Open a pull request
+🏆 Acknowledgments
+Built using:
 
-## Example Output
-```
-DICOM Metadata:
-Patient Name: Rubo DEMO^
-Modality: XA
-Study Date: 19941013
-Image Dimensions: (512, 512)
-Predicted Tissue Type: 419
-```
-
-## Future Improvements
-- Implement support for more advanced models.
-- Expand dataset for better classification.
-- Add more detailed visualization and segmentation.
-
-## License
-This project is open-source and available under the MIT License.
-
----
-
-### Author
-Developed by [Your Name].
+DeepLesion (NIH) – Universal lesion detection dataset.
+TorchVision Faster R-CNN – Object detection model.
+RadImageNet – ResNet50 trained on medical images.
 
