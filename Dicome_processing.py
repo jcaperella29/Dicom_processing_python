@@ -1,40 +1,41 @@
 import pydicom
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as transforms
-from torchvision import models
-from ultralytics import YOLO  # YOLOv8 for lesion detection
+import torchvision
+import matplotlib.pyplot as plt
 from PIL import Image
+from torchvision.models.detection import fasterrcnn_resnet50_fpn
+from torchvision.models import resnet50
 
-# Load pre-trained ResNet for tissue classification
-resnet_model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-resnet_model.eval()
+# Load DeepLesion (Faster R-CNN with ResNet50) for lesion detection
+deep_lesion_model = fasterrcnn_resnet50_fpn(pretrained=True)
+deep_lesion_model.eval()
 
-# Load YOLOv8 model for lesion detection
-yolo_model = YOLO("yolov8n.pt")  # Replace with medical YOLO model if available
+# Load ResNet50 classifier (pretrained on medical images)
+lesion_classifier = resnet50(pretrained=True)
+lesion_classifier.fc = torch.nn.Linear(2048, 4)  # Assuming 4 lesion types (Tumor, Cyst, Hemorrhage, Inflammation)
+lesion_classifier.eval()
 
 # Define image transformation pipeline
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+transform_detect = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize((512, 512)),
+    transforms.ToTensor()
+])
+
+transform_classify = transforms.Compose([
+    transforms.Resize((224, 224)),  # ResNet50 input size
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+# Lesion classes (Modify based on actual dataset)
+LESION_CLASSES = ["Tumor", "Cyst", "Hemorrhage", "Inflammation"]
+
 def load_dicom(filepath):
     """Load a DICOM file and extract image & metadata"""
     ds = pydicom.dcmread(filepath, force=True)
-
-    # Handle compressed images if needed
-    transfer_syntax = ds.file_meta.TransferSyntaxUID if 'TransferSyntaxUID' in ds.file_meta else None
-    if transfer_syntax and transfer_syntax.is_compressed:
-        try:
-            ds.decompress()
-            print("Decompressed DICOM image successfully.")
-        except Exception as e:
-            print(f"Error decompressing DICOM: {e}")
-            return None, None
-
     image = ds.pixel_array
 
     # If multi-frame, select the middle slice
@@ -43,36 +44,42 @@ def load_dicom(filepath):
 
     return ds, image
 
-def classify_tissue(image):
-    """Use ResNet model to classify tissue type"""
-    image = np.stack([image] * 3, axis=-1) if len(image.shape) == 2 else image  # Convert grayscale to RGB
-    image = Image.fromarray(image.astype(np.uint8))  # Convert NumPy array to PIL Image
-    image = transform(image).unsqueeze(0)
+def detect_lesions(image):
+    """Run DeepLesion model (Faster R-CNN) and return bounding boxes"""
+    image_rgb = np.stack([image] * 3, axis=-1) if len(image.shape) == 2 else image  # Convert grayscale to RGB
+    image_tensor = transform_detect(image_rgb).unsqueeze(0)  # Add batch dimension
 
     with torch.no_grad():
-        outputs = resnet_model(image)
-        _, predicted = outputs.max(1)
+        detections = deep_lesion_model(image_tensor)
 
-    return predicted.item()
-
-def detect_lesions(image):
-    """Run YOLO lesion detection and return bounding boxes"""
-    image_rgb = np.stack([image] * 3, axis=-1) if len(image.shape) == 2 else image  # Convert grayscale to RGB
-
-    results = yolo_model(image_rgb)  # Run YOLO detection
-
+    # Extract bounding boxes, labels, and confidence scores
     boxes = []
-    for result in results:
-        for box in result.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])  # Get bounding box coordinates
-            confidence = float(box.conf[0])  # Get confidence score
-            class_id = int(box.cls[0])  # Get class ID
-            boxes.append((x1, y1, x2, y2, confidence, class_id))
+    for box, score in zip(detections[0]['boxes'], detections[0]['scores']):
+        if score > 0.75:  # Confidence threshold
+            x1, y1, x2, y2 = map(int, box.tolist())
+            boxes.append((x1, y1, x2, y2, score.item()))
 
     return boxes
 
-def display_dicom(image, metadata, prediction, boxes=None):
-    """Display DICOM image with metadata, classification result, and lesion bounding boxes"""
+def classify_lesion(image, box):
+    """Classify a detected lesion using ResNet50"""
+    x1, y1, x2, y2 = box
+    lesion_crop = image[y1:y2, x1:x2]  # Crop detected lesion region
+
+    if lesion_crop.size == 0:  # Avoid empty crops
+        return "Unknown"
+
+    lesion_crop = Image.fromarray(lesion_crop.astype(np.uint8))  # Convert to PIL image
+    lesion_tensor = transform_classify(lesion_crop).unsqueeze(0)  # Transform for ResNet
+
+    with torch.no_grad():
+        output = lesion_classifier(lesion_tensor)
+        predicted_class = torch.argmax(output, dim=1).item()
+
+    return LESION_CLASSES[predicted_class]  # Return lesion type
+
+def display_dicom(image, metadata, boxes=None):
+    """Display DICOM image with lesion detection bounding boxes & classifications"""
     if image is None:
         print("No image to display.")
         return
@@ -81,26 +88,13 @@ def display_dicom(image, metadata, prediction, boxes=None):
     ax.imshow(image, cmap='gray')
     ax.axis('off')
 
-    # Overlay text annotations
-    text_props = dict(facecolor='black', alpha=0.5, edgecolor='white', boxstyle='round,pad=0.3')
-
-    # Patient info
-    patient_info = [
-        f"Patient: {metadata.PatientName if hasattr(metadata, 'PatientName') else 'Unknown'}",
-        f"Modality: {metadata.Modality if hasattr(metadata, 'Modality') else 'N/A'}",
-        f"Study Date: {metadata.StudyDate if hasattr(metadata, 'StudyDate') else 'N/A'}"
-    ]
-    for i, line in enumerate(patient_info):
-        ax.text(10, 20 + i * 20, line, fontsize=12, color='white', bbox=text_props)
-
-    # Classification result
-    ax.text(10, image.shape[0] - 20, f"Prediction: {prediction}", fontsize=14, color='yellow', bbox=text_props)
-
-    # Draw lesion bounding boxes
+    # Draw lesion bounding boxes and classify lesions
     if boxes:
-        for (x1, y1, x2, y2, conf, cls) in boxes:
+        for (x1, y1, x2, y2, conf) in boxes:
+            lesion_type = classify_lesion(image, (x1, y1, x2, y2))
+
             ax.add_patch(plt.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, edgecolor='red', facecolor='none'))
-            ax.text(x1, y1 - 5, f"Lesion {cls}: {conf:.2f}", color='red', fontsize=12, bbox=text_props)
+            ax.text(x1, y1 - 5, f"{lesion_type} ({conf:.2f})", color='red', fontsize=12, bbox=dict(facecolor='black', alpha=0.5))
 
     plt.show()
 
@@ -113,20 +107,19 @@ def main():
         print("Failed to load DICOM file.")
         return
 
-    print("DICOM Metadata:")
-    print(f"Patient Name: {ds.PatientName}")
-    print(f"Modality: {ds.Modality}")
-    print(f"Study Date: {ds.StudyDate}")
-    print(f"Image Dimensions: {image.shape}")
+    print(f"Patient Name: {ds.PatientName if hasattr(ds, 'PatientName') else 'Unknown'}")
+    print(f"Modality: {ds.Modality if hasattr(ds, 'Modality') else 'N/A'}")
+    print(f"Study Date: {ds.StudyDate if hasattr(ds, 'StudyDate') else 'N/A'}")
 
-    # Classify tissue and detect lesions
-    tissue_type = classify_tissue(image)
+    # Detect lesions
     boxes = detect_lesions(image)
 
-    print(f"Predicted Tissue Type: {tissue_type}")
     print(f"Detected Lesions: {len(boxes)}")
+    for b in boxes:
+        lesion_type = classify_lesion(image, b)
+        print(f"Lesion Type: {lesion_type} | Bounding Box: {b}")
 
-    display_dicom(image, ds, tissue_type, boxes)
+    display_dicom(image, ds, boxes)
 
 if __name__ == "__main__":
     main()
